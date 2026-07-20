@@ -1,657 +1,379 @@
 import { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
 
-const SHEET_ID = "1i6UaJXO1t90CXE6tLObwXzEAOv3jinJU5Pt2dP-BD4M";
-const SHEET_NAME = "data_sls";
-const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
-  SHEET_NAME
-)}`;
+const SHEET_ID = "15HCv3ia-Xd4ztHvnapwjBevgWzmm7aVXHF-aDwj2cNg";
+const TOTAL_ASSIGNMENT_PROGRESS = 187198;
+const PROGRESS_ADJUSTMENT = 0;
 
-const KECAMATAN_MAP = {
-  "010": "Suppa",
-  "020": "Mattiro Sompe",
-  "021": "Lanrisang",
-  "030": "Mattiro Bulu",
-  "040": "Watang Sawitto",
-  "041": "Paleteang",
-  "042": "Tiroang",
-  "050": "Patampanua",
-  "060": "Cempa",
-  "070": "Duampanua",
-  "071": "Batulappa",
-  "080": "Lembang",
+const TABS = [
+  { id: "petugas", label: "Pendataan by Petugas" },
+  { id: "sls", label: "Pendataan by SLS" },
+  { id: "kecamatan", label: "Progres Kecamatan" },
+];
+
+const SOURCES = {
+  petugas: {
+    gid: "1335155335",
+    columns: ["A", "B", "C", "E", "G", "F", "H", "I", "R", "T"],
+  },
+  sls: {
+    gid: "253272285",
+    columns: ["C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "R", "S", "T", "U", "V"],
+  },
+  kecamatan: {
+    gid: "8973368",
+    columns: ["W", "X", "Y", "Z", "AA", "AB", "AI", "AJ"],
+    limit: 13,
+  },
 };
 
-function normalizeKey(row, ...candidates) {
-  for (const c of candidates) {
-    if (row[c] !== undefined) return row[c];
-  }
+const TABLE_COLUMNS = {
+  petugas: [
+    ["nama", "Nama Petugas"], ["jabatan", "Jabatan"], ["kecamatan", "Kecamatan"],
+    ["open", "Open", "number"], ["submitted", "Submitted by Pencacah", "number"],
+    ["approved", "Approved by Pengawas", "number"], ["draft", "Draft", "number"],
+    ["rejected", "Rejected by Pengawas", "number"], ["assignment", "Total Assignment", "number"],
+    ["persentase", "Persentase", "percent"],
+  ],
+  sls: [
+    ["regionCode", "Kode SLS"], ["totalRegion", "Target", "number"], ["open", "Open", "number"],
+    ["submitted", "Submitted", "number"], ["approved", "Approved", "number"], ["draft", "Draft", "number"],
+    ["rejected", "Rejected", "number"], ["editedAdmin", "Edited Admin", "number"],
+    ["completedAdmin", "Completed Admin", "number"], ["revokedPengawas", "Revoked Pengawas", "number"],
+    ["submittedRespondent", "Submitted Responden", "number"], ["editedPengawas", "Edited Pengawas", "number"],
+    ["rejectedAdmin", "Rejected Admin", "number"], ["revokedAdmin", "Revoked Admin", "number"],
+    ["ppl", "PPL"], ["pml", "PML"], ["totalSubmit", "Total Submit", "number"],
+    ["progres", "Progres SLS", "percent"], ["selesai", "SLS Selesai", "number"],
+  ],
+  kecamatan: [
+    ["kecamatan", "Kecamatan"], ["open", "Open", "number"],
+    ["approve", "Approved by Pengawas", "number"], ["submit", "Submitted by Pencacah", "number"],
+    ["draft", "Draft", "number"], ["reject", "Rejected by Pengawas", "number"],
+    ["totalSubmit", "Total Submit", "number"],
+    ["persentaseSubmit", "Persentase Submit Terhadap Total Assignment", "percent"],
+  ],
+};
 
-  const keys = Object.keys(row);
-
-  for (const c of candidates) {
-    const target = c.replace(/[\s_]/g, "").toLowerCase();
-    const found = keys.find(
-      (k) => k.replace(/[\s_]/g, "").toLowerCase() === target
-    );
-    if (found) return row[found];
-  }
-
-  return undefined;
+function buildCsvUrl(source) {
+  const limit = source.limit ? ` limit ${source.limit}` : "";
+  const query = encodeURIComponent(`select ${source.columns.join(",")}${limit}`);
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${source.gid}&headers=1&tq=${query}&_=${Date.now()}`;
 }
 
-function toNumber(val) {
-  if (val === undefined || val === null || val === "") return 0;
-  const n = parseFloat(String(val).replace(/,/g, ""));
-  return isNaN(n) ? 0 : n;
+function toNumber(value) {
+  const number = parseFloat(String(value ?? "").replace(/%|,/g, "").trim());
+  return Number.isFinite(number) ? number : 0;
 }
 
-function formatDateTime(date) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(date.getDate())} ${date.toLocaleString("id-ID", {
-    month: "long",
-  })} ${date.getFullYear()} Pukul ${pad(date.getHours())}.${pad(
-    date.getMinutes()
-  )} WIB`;
+function toPercentage(value) {
+  const text = String(value ?? "").trim();
+  let number = toNumber(text);
+  if (!text.includes("%") && number > 0 && number <= 1) number *= 100;
+  return number;
+}
+
+function currentDateWita() {
+  return new Intl.DateTimeFormat("id-ID", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Makassar",
+  }).format(new Date());
+}
+
+function splitHeaderLabel(label) {
+  const words = label.split(" ");
+  if (words.length < 3 || label.length <= 16) return [label];
+
+  let splitAt = 1;
+  let smallestDifference = Infinity;
+  for (let i = 1; i < words.length; i += 1) {
+    const firstLength = words.slice(0, i).join(" ").length;
+    const secondLength = words.slice(i).join(" ").length;
+    const difference = Math.abs(firstLength - secondLength);
+    if (difference < smallestDifference) {
+      smallestDifference = difference;
+      splitAt = i;
+    }
+  }
+  return [words.slice(0, splitAt).join(" "), words.slice(splitAt).join(" ")];
+}
+
+function mapRows(type, rows) {
+  return rows.slice(1).map((r) => {
+    if (type === "petugas") return {
+      nama: String(r[0] ?? "").trim(), jabatan: String(r[1] ?? "").trim() || "-",
+      kecamatan: String(r[2] ?? "").trim() || "-", open: toNumber(r[3]), submitted: toNumber(r[4]),
+      approved: toNumber(r[5]), draft: toNumber(r[6]), rejected: toNumber(r[7]),
+      assignment: toNumber(r[8]), persentase: toPercentage(r[9]),
+    };
+    if (type === "sls") return {
+      regionCode: String(r[0] ?? "").trim(), totalRegion: toNumber(r[1]), open: toNumber(r[2]),
+      submitted: toNumber(r[3]), approved: toNumber(r[4]), draft: toNumber(r[5]), rejected: toNumber(r[6]),
+      editedAdmin: toNumber(r[7]), completedAdmin: toNumber(r[8]), revokedPengawas: toNumber(r[9]),
+      submittedRespondent: toNumber(r[10]), editedPengawas: toNumber(r[11]), rejectedAdmin: toNumber(r[12]),
+      revokedAdmin: toNumber(r[13]), ppl: String(r[14] ?? "").trim() || "-", pml: String(r[15] ?? "").trim() || "-",
+      totalSubmit: toNumber(r[16]), progres: toPercentage(r[17]), selesai: toNumber(r[18]),
+    };
+    return {
+      kecamatan: String(r[0] ?? "").trim() || "TOTAL", open: toNumber(r[1]), approve: toNumber(r[2]),
+      submit: toNumber(r[3]), draft: toNumber(r[4]), reject: toNumber(r[5]),
+      totalSubmit: toNumber(r[6]), persentaseSubmit: toPercentage(r[7]),
+    };
+  }).filter((r) => {
+    if (type === "sls") return r.regionCode;
+    if (type === "petugas") return r.nama;
+    return r.kecamatan !== "TOTAL" || r.open || r.submit || r.approve || r.draft || r.reject || r.totalSubmit || r.persentaseSubmit;
+  });
+}
+
+function progressClass(value) {
+  if (value >= 100) return "bg-emerald-100 text-emerald-700";
+  if (value >= 40) return "bg-blue-100 text-blue-700";
+  if (value > 0) return "bg-amber-100 text-amber-700";
+  return "bg-slate-100 text-slate-500";
 }
 
 export default function App() {
-  const [rawRows, setRawRows] = useState([]);
+  const [activeTab, setActiveTab] = useState("petugas");
+  const [datasets, setDatasets] = useState({ petugas: [], sls: [], kecamatan: [] });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [sortDesc, setSortDesc] = useState(true);
-  const [selectedKec, setSelectedKec] = useState(null);
-  const [petugasFilter, setPetugasFilter] = useState("all");
-  const [petugasSearch, setPetugasSearch] = useState("");
-  const [updatedAt, setUpdatedAt] = useState(null);
+  const [jabatanFilter, setJabatanFilter] = useState("all");
+  const [kecamatanFilter, setKecamatanFilter] = useState("all");
+  const [showTopPpl, setShowTopPpl] = useState(false);
+  const [sort, setSort] = useState({ key: null, desc: true });
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let active = true;
-
     async function load() {
-      setLoading(true);
-      setError(null);
-
+      setLoading(true); setError("");
       try {
-        const res = await fetch(CSV_URL);
-        if (!res.ok) throw new Error("Gagal mengambil data spreadsheet");
-
-        const text = await res.text();
-        const parsed = Papa.parse(text, {
-          header: true,
-          skipEmptyLines: true,
-        });
-
-        if (!active) return;
-
-        setRawRows(parsed.data || []);
-        setUpdatedAt(new Date());
-      } catch (e) {
-        if (active) setError(e.message || "Terjadi kesalahan");
-      } finally {
-        if (active) setLoading(false);
-      }
+        const entries = await Promise.all(Object.entries(SOURCES).map(async ([key, source]) => {
+          const response = await fetch(buildCsvUrl(source), { cache: "no-store" });
+          if (!response.ok) throw new Error(`Gagal mengambil data ${key}`);
+          const csv = await response.text();
+          const parsed = Papa.parse(csv, { header: false, skipEmptyLines: true });
+          return [key, mapRows(key, parsed.data || [])];
+        }));
+        if (active) {
+          setDatasets(Object.fromEntries(entries));
+        }
+      } catch (e) { if (active) setError(e.message || "Terjadi kesalahan saat memuat data"); }
+      finally { if (active) setLoading(false); }
     }
-
     load();
+    return () => { active = false; };
+  }, [reloadToken]);
 
-    return () => {
-      active = false;
-    };
-  }, []);
+  useEffect(() => {
+    setSearch("");
+    setJabatanFilter("all");
+    setKecamatanFilter("all");
+    setSort({ key: null, desc: true });
+  }, [activeTab]);
 
-  const { kecamatanList, summary } = useMemo(() => {
-    if (!rawRows.length) return { kecamatanList: [], summary: null };
+  const filterOptions = useMemo(() => {
+    const rows = datasets[activeTab] || [];
+    const unique = (key) => [...new Set(rows.map((row) => row[key]).filter((value) => value && value !== "-"))]
+      .sort((a, b) => String(a).localeCompare(String(b), "id"));
+    return { jabatan: unique("jabatan"), kecamatan: unique("kecamatan") };
+  }, [activeTab, datasets]);
 
-    const kecMap = new Map();
-
-    for (const row of rawRows) {
-      const nama = normalizeKey(row, "usename", "username", "Nama")?.trim();
-      if (!nama) continue;
-
-      const kodeKecRaw = normalizeKey(row, "Kode_Kecamatan", "kode_kecamatan");
-      const kodeKec = String(kodeKecRaw ?? "").trim().padStart(3, "0");
-
-      const progress = toNumber(normalizeKey(row, "Progress"));
-      const totalRegion = toNumber(normalizeKey(row, "totalRegion"));
-      const open = toNumber(normalizeKey(row, "OPEN"));
-
-      const submittedDraft = toNumber(
-        normalizeKey(row, "SUBMITTED BY Pencacah", "SUBMITTED_BY_Pencacah")
-      );
-
-      const draft = toNumber(normalizeKey(row, "DRAFT"));
-
-      const approvedPengawas = toNumber(
-        normalizeKey(row, "APPROVED BY Pengawas", "APPROVED_BY_Pengawas")
-      );
-
-      const rejectedPengawas = toNumber(
-        normalizeKey(row, "REJECTED BY Pengawas", "REJECTED_BY_Pengawas")
-      );
-
-      const revoked = toNumber(
-        normalizeKey(row, "REVOKED BY", "REVOKED_BY")
-      );
-
-      const submittedResponden = toNumber(
-        normalizeKey(row, "SUBMITTED RESPONDENT", "SUBMITTED_RESPONDENT")
-      );
-
-      if (!kecMap.has(kodeKec)) {
-        kecMap.set(kodeKec, {
-          kode: kodeKec,
-          nama: KECAMATAN_MAP[kodeKec] || `Kecamatan ${kodeKec}`,
-          petugasMap: new Map(),
-        });
-      }
-
-      const kec = kecMap.get(kodeKec);
-
-      if (!kec.petugasMap.has(nama)) {
-        kec.petugasMap.set(nama, {
-          nama,
-          totalRegion: 0,
-          weightedSum: 0,
-          open: 0,
-          submittedDraft: 0,
-          draft: 0,
-          approvedPengawas: 0,
-          rejectedPengawas: 0,
-          revoked: 0,
-          submittedResponden: 0,
-        });
-      }
-
-      const p = kec.petugasMap.get(nama);
-
-      p.totalRegion += totalRegion;
-      p.weightedSum += progress * totalRegion;
-      p.open += open;
-      p.submittedDraft += submittedDraft;
-      p.draft += draft;
-      p.approvedPengawas += approvedPengawas;
-      p.rejectedPengawas += rejectedPengawas;
-      p.revoked += revoked;
-      p.submittedResponden += submittedResponden;
+  const visibleRows = useMemo(() => {
+    let rows = datasets[activeTab] || [];
+    if (activeTab === "petugas" && jabatanFilter !== "all") {
+      rows = rows.filter((row) => row.jabatan === jabatanFilter);
     }
+    if (activeTab === "petugas" && kecamatanFilter !== "all") {
+      rows = rows.filter((row) => row.kecamatan === kecamatanFilter);
+    }
+    const query = search.trim().toLowerCase();
+    if (query) rows = rows.filter((row) => Object.values(row).some((value) => String(value).toLowerCase().includes(query)));
+    if (sort.key) rows = [...rows].sort((a, b) => {
+      const av = a[sort.key]; const bv = b[sort.key];
+      const result = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv), "id");
+      return sort.desc ? -result : result;
+    });
+    return rows;
+  }, [activeTab, datasets, search, jabatanFilter, kecamatanFilter, sort]);
 
-    const kecArr = Array.from(kecMap.values()).map((kec) => {
-      const petugasArr = Array.from(kec.petugasMap.values()).map((p) => ({
-        ...p,
-        progress: p.totalRegion > 0 ? p.weightedSum / p.totalRegion : 0,
-      }));
-
-      petugasArr.sort((a, b) => b.progress - a.progress);
-
-      const totalRegionKec = petugasArr.reduce((s, p) => s + p.totalRegion, 0);
-      const weightedSumKec = petugasArr.reduce((s, p) => s + p.weightedSum, 0);
-
-      const avgProgress =
-        totalRegionKec > 0 ? weightedSumKec / totalRegionKec : 0;
-
-      return {
-        kode: kec.kode,
-        nama: kec.nama,
-        avgProgress,
-        jumlahPetugas: petugasArr.length,
-        petugasArr,
-      };
+  const summary = useMemo(() => {
+    const pmlRows = datasets.petugas.filter((row) => row.jabatan.toUpperCase() === "PML");
+    const totals = pmlRows.reduce((result, row) => ({
+      open: result.open + row.open,
+      approved: result.approved + row.approved,
+      draft: result.draft + row.draft,
+      rejected: result.rejected + row.rejected,
+    }), {
+      open: 0, approved: 0, draft: 0, rejected: 0,
     });
 
-    kecArr.sort((a, b) => a.nama.localeCompare(b.nama));
-
-    const allPetugasMap = new Map();
-
-    for (const kec of kecArr) {
-      for (const p of kec.petugasArr) {
-        if (!allPetugasMap.has(p.nama)) {
-          allPetugasMap.set(p.nama, {
-            totalRegion: 0,
-            weightedSum: 0,
-          });
-        }
-
-        const acc = allPetugasMap.get(p.nama);
-        acc.totalRegion += p.totalRegion;
-        acc.weightedSum += p.weightedSum;
-      }
-    }
-
-    const allPetugas = Array.from(allPetugasMap.entries()).map(
-      ([nama, acc]) => ({
-        nama,
-        progress: acc.totalRegion > 0 ? acc.weightedSum / acc.totalRegion : 0,
-      })
-    );
-
-    const totalPetugas = allPetugas.length;
-
-    const rataRataProgress =
-      totalPetugas > 0
-        ? allPetugas.reduce((s, p) => s + p.progress, 0) / totalPetugas
-        : 0;
-
-    const progressKurang10 = allPetugas.filter((p) => p.progress < 10).length;
-    const belumMulai = allPetugas.filter((p) => p.progress === 0).length;
-    const progress100 = allPetugas.filter((p) => p.progress >= 100).length;
-
-    const totalDraft = rawRows.reduce(
-      (s, row) => s + toNumber(normalizeKey(row, "DRAFT")),
-      0
-    );
-
-    const totalApprovedPengawas = rawRows.reduce(
-      (s, row) =>
-        s + toNumber(normalizeKey(row, "APPROVED BY Pengawas")),
-      0
-    );
-
-    const totalRejectedPengawas = rawRows.reduce(
-      (s, row) =>
-        s + toNumber(normalizeKey(row, "REJECTED BY Pengawas")),
-      0
-    );
-
+    const submittedAssignment = TOTAL_ASSIGNMENT_PROGRESS - totals.open - totals.draft;
     return {
-      kecamatanList: kecArr,
-      summary: {
-        totalPetugas,
-        rataRataProgress,
-        progressKurang10,
-        belumMulai,
-        progress100,
-        totalDraft,
-        totalApprovedPengawas,
-        totalRejectedPengawas,
-      },
+      averageProgress: (submittedAssignment / TOTAL_ASSIGNMENT_PROGRESS) * 100 + PROGRESS_ADJUSTMENT,
+      totalDraft: totals.draft,
+      totalApproved: totals.approved,
+      totalRejected: totals.rejected,
     };
-  }, [rawRows]);
+  }, [datasets.petugas]);
 
-  const filteredKecamatan = useMemo(() => {
-    let arr = kecamatanList;
+  const topPplRows = useMemo(() => datasets.petugas
+    .filter((row) => row.jabatan.toUpperCase() === "PPL")
+    .sort((a, b) => b.persentase - a.persentase)
+    .slice(0, 5), [datasets.petugas]);
 
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      arr = arr.filter((k) => k.nama.toLowerCase().includes(q));
-    }
+  const topKecamatanRanks = useMemo(() => new Map(datasets.kecamatan
+    .filter((row) => row.kecamatan !== "TOTAL")
+    .sort((a, b) => b.persentaseSubmit - a.persentaseSubmit)
+    .slice(0, 5)
+    .map((row, index) => [row.kecamatan, index + 1])), [datasets.kecamatan]);
 
-    arr = [...arr].sort((a, b) =>
-      sortDesc ? b.avgProgress - a.avgProgress : a.avgProgress - b.avgProgress
-    );
-
-    return arr;
-  }, [kecamatanList, search, sortDesc]);
-
-  const activeKec =
-    kecamatanList.find((k) => k.kode === selectedKec) || filteredKecamatan[0];
-
-  const petugasNames = useMemo(() => {
-    if (!activeKec) return [];
-    return activeKec.petugasArr.map((p) => p.nama);
-  }, [activeKec]);
-
-  const detailPetugas = useMemo(() => {
-    if (!activeKec) return [];
-
-    let arr = activeKec.petugasArr;
-
-    if (petugasFilter !== "all") {
-      arr = arr.filter((p) => p.nama === petugasFilter);
-    }
-
-    if (petugasSearch.trim()) {
-      const q = petugasSearch.trim().toLowerCase();
-      arr = arr.filter((p) => p.nama.toLowerCase().includes(q));
-    }
-
-    return arr;
-  }, [activeKec, petugasFilter, petugasSearch]);
-
-  function progressBadgeColor(progress) {
-    if (progress >= 100) return "bg-emerald-100 text-emerald-700";
-    if (progress >= 50) return "bg-amber-100 text-amber-700";
-    return "bg-pink-100 text-pink-600";
+  function handleSort(key) {
+    setSort((current) => current.key === key ? { key, desc: !current.desc } : { key, desc: true });
   }
 
-  function progressLabel(progress) {
-    if (progress >= 100) return "Selesai";
-    if (progress > 0) return "Perlu Perhatian";
-    return "Belum Mulai";
-  }
+  const columns = TABLE_COLUMNS[activeTab];
+  const title = TABS.find((tab) => tab.id === activeTab)?.label;
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <header className="bg-gradient-to-r from-orange-500 to-orange-400 text-white px-6 py-5 shadow flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-90">
-            Badan Pusat Statistik
-          </div>
-          <h1 className="text-2xl font-bold mt-1">
-            Monitoring Petugas Pencacahan
-          </h1>
-          <p className="text-sm opacity-90">BPS Kabupaten Pinrang</p>
-        </div>
-
-        <div className="text-right text-sm opacity-90">
-          <p>Data diperbarui pada</p>
-          <p className="font-semibold">
-            {updatedAt ? formatDateTime(updatedAt) : "-"}
-          </p>
+      <header className="bg-gradient-to-r from-orange-600 to-orange-400 text-white px-6 py-5 shadow">
+        <div className="max-w-[1500px] mx-auto flex flex-wrap items-center justify-between gap-4">
+          <div><p className="text-xs font-semibold uppercase tracking-widest opacity-90">Badan Pusat Statistik</p>
+            <h1 className="text-2xl font-bold mt-1">Monitoring Petugas Pencacahan</h1><p className="text-sm opacity-90">BPS Kabupaten Pinrang</p></div>
+          <div className="text-right text-sm"><p className="opacity-80">Data diperbarui pada hari</p>
+            <p className="font-semibold">{currentDateWita()}</p>
+            <p className="font-semibold">Pukul 08.00 WITA</p>
+            <button onClick={() => setReloadToken((n) => n + 1)} disabled={loading}
+              className="mt-2 text-xs bg-white/20 hover:bg-white/30 disabled:opacity-50 px-3 py-1.5 rounded-lg font-medium transition">
+              {loading ? "Memuat..." : "↻ Refresh Data"}</button></div>
         </div>
       </header>
 
-      <main className="p-6 max-w-7xl mx-auto">
-        {loading && (
-          <div className="bg-white rounded-xl shadow p-8 text-center text-slate-500">
-            Memuat data dari spreadsheet...
+      <main className="p-4 md:p-6 max-w-[1500px] mx-auto">
+        {!loading && !error && <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5" aria-label="Ringkasan pendataan PML">
+          <div className="bg-blue-500 text-white rounded-xl p-4 shadow-md">
+            <p className="text-xs font-medium opacity-90">Progress Pendataan</p>
+            <p className="text-2xl font-bold mt-1">{summary.averageProgress.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</p>
+            <p className="text-xs mt-2 opacity-80">seluruh assignment PML</p>
           </div>
-        )}
-
-        {error && !loading && (
-          <div className="bg-white rounded-xl shadow p-8 text-center text-red-600">
-            Gagal memuat data: {error}
+          <div className="bg-amber-500 text-white rounded-xl p-4 shadow-md">
+            <p className="text-xs font-medium opacity-90">Total Draft</p>
+            <p className="text-2xl font-bold mt-1">{summary.totalDraft.toLocaleString("id-ID")}</p>
+            <p className="text-xs mt-2 opacity-80">seluruh PML</p>
           </div>
-        )}
+          <div className="bg-emerald-500 text-white rounded-xl p-4 shadow-md">
+            <p className="text-xs font-medium opacity-90">Total Approved Pengawas</p>
+            <p className="text-2xl font-bold mt-1">{summary.totalApproved.toLocaleString("id-ID")}</p>
+            <p className="text-xs mt-2 opacity-80">seluruh PML</p>
+          </div>
+          <div className="bg-rose-500 text-white rounded-xl p-4 shadow-md">
+            <p className="text-xs font-medium opacity-90">Total Rejected Pengawas</p>
+            <p className="text-2xl font-bold mt-1">{summary.totalRejected.toLocaleString("id-ID")}</p>
+            <p className="text-xs mt-2 opacity-80">seluruh PML</p>
+          </div>
+        </section>}
 
-        {!loading && !error && summary && (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
-              <div className="bg-slate-700 text-white rounded-xl p-4 shadow">
-                <p className="text-xs opacity-80">Total Petugas</p>
-                <p className="text-2xl font-bold mt-1">
-                  {summary.totalPetugas}
-                </p>
-                <p className="text-xs opacity-70 mt-1">pencacah lapangan</p>
-              </div>
+        <nav className="bg-white rounded-xl shadow-sm p-1.5 mb-5 flex gap-1 overflow-x-auto" aria-label="Pilihan tabel">
+          {TABS.map((tab) => <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 min-w-max px-4 py-3 rounded-lg text-sm font-semibold transition ${activeTab === tab.id ? "bg-orange-500 text-white shadow" : "text-slate-600 hover:bg-orange-50 hover:text-orange-600"}`}>
+            {tab.label}</button>)}
+        </nav>
 
-              <div className="bg-orange-500 text-white rounded-xl p-4 shadow">
-                <p className="text-xs opacity-80">Total Kecamatan</p>
-                <p className="text-2xl font-bold mt-1">
-                  {kecamatanList.length}
-                </p>
-                <p className="text-xs opacity-70 mt-1">wilayah kerja</p>
-              </div>
+        {loading && <div className="bg-white rounded-xl shadow p-10 text-center text-slate-500">Memuat tiga tabel dari spreadsheet...</div>}
+        {error && !loading && <div className="bg-white rounded-xl shadow p-10 text-center text-red-600">Gagal memuat data: {error}</div>}
 
-              <div className="bg-blue-500 text-white rounded-xl p-4 shadow">
-                <p className="text-xs opacity-80">Rata-rata Progress</p>
-                <p className="text-2xl font-bold mt-1">
-                  {summary.rataRataProgress.toFixed(1)}%
-                </p>
-                <p className="text-xs opacity-70 mt-1">seluruh petugas</p>
+        {!loading && !error && <>
+          <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+            <div><h2 className="text-xl font-bold text-slate-800">{title}</h2>
+              <p className="text-sm text-slate-500">{datasets[activeTab].length.toLocaleString("id-ID")} baris data</p></div>
+            <div className="w-full lg:w-auto flex flex-wrap items-center justify-end gap-2">
+              <div className="w-full sm:w-80 flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm">
+                <span className="text-slate-400">⌕</span><input value={search} onChange={(e) => setSearch(e.target.value)}
+                  placeholder={activeTab === "sls" ? "Cari kode SLS, PPL, atau PML..." : activeTab === "kecamatan" ? "Cari kecamatan..." : "Cari petugas atau kecamatan..."}
+                  className="bg-transparent outline-none text-sm w-full" />
               </div>
-
-              <div className="bg-rose-500 text-white rounded-xl p-4 shadow">
-                <p className="text-xs opacity-80">Progress &lt; 10%</p>
-                <p className="text-2xl font-bold mt-1">
-                  {summary.progressKurang10}
-                </p>
-                <p className="text-xs opacity-70 mt-1">perlu dikejar</p>
-              </div>
-
-              <div className="bg-emerald-50 text-emerald-600 rounded-xl p-4 shadow border border-emerald-100">
-                <p className="text-xs opacity-80">Progress ≥ 100%</p>
-                <p className="text-2xl font-bold mt-1">
-                  {summary.progress100}
-                </p>
-                <p className="text-xs opacity-70 mt-1">sudah selesai</p>
-              </div>
-
-              <div className="bg-yellow-500 text-white rounded-xl p-4 shadow">
-                <p className="text-xs opacity-80">Total Draft</p>
-                <p className="text-2xl font-bold mt-1">
-                  {summary.totalDraft}
-                </p>
-                <p className="text-xs opacity-70 mt-1">seluruh SLS</p>
-              </div>
-
-              <div className="bg-green-500 text-white rounded-xl p-4 shadow">
-                <p className="text-xs opacity-80">Approved Pengawas</p>
-                <p className="text-2xl font-bold mt-1">
-                  {summary.totalApprovedPengawas}
-                </p>
-                <p className="text-xs opacity-70 mt-1">disetujui</p>
-              </div>
-
-              <div className="bg-red-500 text-white rounded-xl p-4 shadow">
-                <p className="text-xs opacity-80">Rejected Pengawas</p>
-                <p className="text-2xl font-bold mt-1">
-                  {summary.totalRejectedPengawas}
-                </p>
-                <p className="text-xs opacity-70 mt-1">ditolak</p>
-              </div>
+              {activeTab === "petugas" && <>
+                <select value={jabatanFilter} onChange={(e) => setJabatanFilter(e.target.value)}
+                  className="flex-1 sm:flex-none bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 shadow-sm outline-none focus:border-orange-400">
+                  <option value="all">Semua Jabatan</option>
+                  {filterOptions.jabatan.map((jabatan) => <option key={jabatan} value={jabatan}>{jabatan}</option>)}
+                </select>
+                <select value={kecamatanFilter} onChange={(e) => setKecamatanFilter(e.target.value)}
+                  className="flex-1 sm:flex-none bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 shadow-sm outline-none focus:border-orange-400">
+                  <option value="all">Semua Kecamatan</option>
+                  {filterOptions.kecamatan.map((kecamatan) => <option key={kecamatan} value={kecamatan}>{kecamatan}</option>)}
+                </select>
+              </>}
             </div>
+          </div>
 
-            <div className="bg-white rounded-xl shadow p-3 flex flex-wrap items-center gap-3 mb-6">
-              <div className="flex-1 min-w-[200px] flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
-                <span className="text-slate-400">🔍</span>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Cari nama kecamatan..."
-                  className="bg-transparent outline-none text-sm w-full"
-                />
-              </div>
-
-              <button
-                onClick={() => setSortDesc((s) => !s)}
-                className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
-              >
-                Urutkan {sortDesc ? "▼" : "▲"}
-              </button>
-
-              <span className="text-xs text-slate-500 px-2">
-                Progress{" "}
-                {sortDesc ? "tertinggi → terendah" : "terendah → tertinggi"}
+          {activeTab === "petugas" && <section className="mb-4 overflow-hidden rounded-xl border border-orange-200 bg-white shadow-sm" aria-labelledby="top-ppl-title">
+            <button type="button" onClick={() => setShowTopPpl((visible) => !visible)} aria-expanded={showTopPpl} aria-controls="top-ppl-table"
+              className="flex w-full items-center justify-between gap-3 bg-gradient-to-r from-orange-500 to-amber-400 px-4 py-2.5 text-left text-white transition hover:from-orange-600 hover:to-amber-500">
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-base">★</span>
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-semibold uppercase tracking-widest text-orange-100">Pencapaian Terbaik</span>
+                  <span id="top-ppl-title" className="block truncate text-sm font-bold">Top 5 PPL dengan Persentase Tertinggi</span>
+                </span>
               </span>
+              <span className="flex shrink-0 items-center gap-2 text-xs font-semibold">
+                {showTopPpl ? "Tutup" : "Lihat peringkat"}
+                <span className={`text-base transition-transform ${showTopPpl ? "rotate-180" : ""}`}>⌄</span>
+              </span>
+            </button>
+            {showTopPpl && <div id="top-ppl-table" className="overflow-x-auto bg-gradient-to-br from-orange-50 via-white to-amber-50">
+              <table className="min-w-full text-sm">
+                <thead className="border-b border-orange-200 bg-orange-100/70">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-orange-800">Peringkat</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-orange-800">Nama Petugas</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-orange-800">Kecamatan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topPplRows.map((row, index) => <tr key={`top-${row.nama}-${index}`} className="border-b border-orange-100 last:border-0 hover:bg-orange-100/60">
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-bold text-white shadow-sm ${index === 0 ? "bg-amber-500 ring-4 ring-amber-200" : index === 1 ? "bg-slate-500" : index === 2 ? "bg-orange-700" : "bg-orange-400"}`}>{index + 1}</span>
+                    </td>
+                    <td className="px-4 py-3 font-bold text-slate-800">{row.nama}</td>
+                    <td className="px-4 py-3 text-slate-600">{row.kecamatan}</td>
+                  </tr>)}
+                </tbody>
+              </table>
+            </div>}
+          </section>}
+
+          <div className="bg-white rounded-xl shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="border-b border-orange-600 bg-gradient-to-r from-orange-600 to-amber-500"><tr>
+                  {columns.map(([key, label, type]) => <th key={key} onClick={() => handleSort(key)}
+                    className={`min-w-[90px] max-w-[155px] px-3 py-3 text-xs font-bold uppercase leading-tight tracking-wide cursor-pointer select-none whitespace-normal transition-colors hover:bg-white/15 ${type ? "text-right" : "text-left"} ${sort.key === key ? "bg-amber-200 text-orange-900" : "text-white"}`}>
+                    <span className={`flex items-center gap-1.5 ${type ? "justify-end" : "justify-start"}`}>
+                      <span>{splitHeaderLabel(label).map((line, index) => <span key={`${key}-${index}`} className="block whitespace-nowrap">{line}</span>)}</span>
+                      {sort.key === key && <span className="shrink-0">{sort.desc ? "▼" : "▲"}</span>}
+                    </span>
+                  </th>)}
+                </tr></thead>
+                <tbody>
+                  {visibleRows.length === 0 && <tr><td colSpan={columns.length} className="text-center text-slate-400 py-10">Data tidak ditemukan.</td></tr>}
+                  {visibleRows.map((row, index) => <tr key={`${row.nama || row.regionCode || row.kecamatan}-${index}`}
+                    className={`border-b last:border-b-0 border-slate-100 transition ${row.jabatan?.toUpperCase() === "PML" ? "bg-blue-50 font-semibold text-blue-950 shadow-[inset_4px_0_0_#3b82f6] hover:bg-blue-100" : row.kecamatan === "TOTAL" ? "bg-slate-50 font-semibold hover:bg-slate-100" : "hover:bg-orange-50"}`}>
+                    {columns.map(([key, , type]) => <td key={key} className={`px-3 py-2.5 whitespace-nowrap ${type ? "text-right" : "text-left"}`}>
+                      {activeTab === "kecamatan" && key === "kecamatan" && topKecamatanRanks.has(row.kecamatan) ? <span className="flex items-center gap-2"><span className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-bold text-white shadow-sm ${topKecamatanRanks.get(row.kecamatan) === 1 ? "bg-amber-500 ring-4 ring-amber-200" : topKecamatanRanks.get(row.kecamatan) === 2 ? "bg-slate-500" : topKecamatanRanks.get(row.kecamatan) === 3 ? "bg-orange-700" : "bg-orange-400"}`}>{topKecamatanRanks.get(row.kecamatan)}</span><span>{row[key]}</span></span>
+                        : activeTab === "petugas" && key === "jabatan" && row.jabatan.toUpperCase() === "PML" ? <span className="font-bold text-blue-700">PML</span>
+                        : type === "percent" ? <span className={`text-xs font-bold px-2 py-1 rounded-lg ${progressClass(row[key])}`}>{row[key].toFixed(2)}%</span>
+                        : type === "number" ? row[key].toLocaleString("id-ID") : row[key]}
+                    </td>)}
+                  </tr>)}
+                </tbody>
+              </table>
             </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
-                {filteredKecamatan.length === 0 && (
-                  <div className="col-span-2 bg-white rounded-xl shadow p-6 text-center text-slate-400">
-                    Kecamatan tidak ditemukan.
-                  </div>
-                )}
-
-                {filteredKecamatan.map((kec) => {
-                  const isActive = activeKec && activeKec.kode === kec.kode;
-
-                  return (
-                    <button
-                      key={kec.kode}
-                      onClick={() => {
-                        setSelectedKec(kec.kode);
-                        setPetugasFilter("all");
-                        setPetugasSearch("");
-                      }}
-                      className={`text-left bg-white rounded-xl shadow p-4 border-2 transition hover:shadow-md ${
-                        isActive
-                          ? "border-orange-400 bg-orange-50"
-                          : "border-transparent"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                          Kecamatan
-                        </p>
-
-                        <span
-                          className={`text-xs font-bold px-2 py-0.5 rounded-full ${progressBadgeColor(
-                            kec.avgProgress
-                          )}`}
-                        >
-                          {kec.avgProgress.toFixed(1)}%
-                        </span>
-                      </div>
-
-                      <p className="font-bold text-slate-800 mt-1">
-                        {kec.nama}
-                      </p>
-
-                      <div className="w-full h-1.5 bg-slate-100 rounded-full mt-3 overflow-hidden">
-                        <div
-                          className="h-full bg-pink-500 rounded-full"
-                          style={{
-                            width: `${Math.min(kec.avgProgress, 100)}%`,
-                          }}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between mt-3">
-                        <p className="text-xs text-slate-500">
-                          {kec.jumlahPetugas} petugas
-                        </p>
-
-                        <span
-                          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${progressBadgeColor(
-                            kec.avgProgress
-                          )}`}
-                        >
-                          {progressLabel(kec.avgProgress)}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="bg-orange-500 text-white rounded-xl shadow p-4 h-fit lg:sticky lg:top-4">
-                {activeKec ? (
-                  <>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-xs uppercase tracking-wide opacity-80">
-                          Kecamatan
-                        </p>
-                        <h3 className="text-xl font-bold">{activeKec.nama}</h3>
-                      </div>
-
-                      <button
-                        onClick={() => setSelectedKec(null)}
-                        className="text-white/80 hover:text-white"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    <p className="text-xs mt-4 opacity-90">
-                      Rata-rata progress petugas
-                    </p>
-
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 h-2 bg-white/30 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-white rounded-full"
-                          style={{
-                            width: `${Math.min(activeKec.avgProgress, 100)}%`,
-                          }}
-                        />
-                      </div>
-
-                      <span className="text-sm font-bold">
-                        {activeKec.avgProgress.toFixed(2)}%
-                      </span>
-                    </div>
-
-                    <p className="text-xs mt-5 opacity-90 font-semibold uppercase tracking-wide">
-                      Petugas Pencacah
-                    </p>
-
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      <button
-                        onClick={() => setPetugasFilter("all")}
-                        className={`text-xs px-3 py-1 rounded-full font-medium ${
-                          petugasFilter === "all"
-                            ? "bg-white text-orange-600"
-                            : "bg-white/20 text-white"
-                        }`}
-                      >
-                        Semua ({petugasNames.length})
-                      </button>
-
-                      {petugasNames.slice(0, 6).map((nama) => (
-                        <button
-                          key={nama}
-                          onClick={() => setPetugasFilter(nama)}
-                          className={`text-xs px-3 py-1 rounded-full font-medium truncate max-w-[120px] ${
-                            petugasFilter === nama
-                              ? "bg-white text-orange-600"
-                              : "bg-white/20 text-white"
-                          }`}
-                          title={nama}
-                        >
-                          {nama}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="mt-4 bg-white rounded-lg px-3 py-2 flex items-center gap-2">
-                      <span className="text-slate-400 text-sm">🔍</span>
-                      <input
-                        value={petugasSearch}
-                        onChange={(e) => setPetugasSearch(e.target.value)}
-                        placeholder="Cari nama petugas..."
-                        className="outline-none text-sm text-slate-700 w-full"
-                      />
-                    </div>
-
-                    <div className="mt-3 bg-white rounded-lg overflow-hidden max-h-96 overflow-y-auto">
-                      {detailPetugas.length === 0 && (
-                        <p className="text-slate-400 text-sm text-center py-6">
-                          Petugas tidak ditemukan.
-                        </p>
-                      )}
-
-                      {detailPetugas.map((p, idx) => (
-                        <div
-                          key={p.nama}
-                          className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0 border-slate-100"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-xs text-slate-400">{idx + 1}</p>
-
-                            <p className="text-sm font-semibold text-slate-700 truncate">
-                              {p.nama}
-                            </p>
-
-                            <p className="text-[11px] text-slate-400">
-                              {p.totalRegion} SLS &bull; disetujui{" "}
-                              {p.approvedPengawas}
-                            </p>
-
-                            <div className="w-32 h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
-                              <div
-                                className="h-full bg-orange-400 rounded-full"
-                                style={{
-                                  width: `${Math.min(p.progress, 100)}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-
-                          <span
-                            className={`text-xs font-bold px-2 py-1 rounded-lg shrink-0 ${progressBadgeColor(
-                              p.progress
-                            )}`}
-                          >
-                            {p.progress.toFixed(2)}%
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sm opacity-80">
-                    Pilih kecamatan untuk melihat detail petugas.
-                  </p>
-                )}
-              </div>
-            </div>
-          </>
-        )}
+          </div>
+          <p className="text-xs text-slate-500 mt-3 text-right">Menampilkan {visibleRows.length.toLocaleString("id-ID")} dari {datasets[activeTab].length.toLocaleString("id-ID")} baris</p>
+        </>}
       </main>
     </div>
   );
