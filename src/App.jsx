@@ -100,8 +100,8 @@ function mapRows(type, rows) {
   return rows.slice(1).map((r) => {
     if (type === "petugas") return {
       nama: String(r[0] ?? "").trim(), jabatan: String(r[1] ?? "").trim() || "-",
-      kecamatan: String(r[2] ?? "").trim() || "-", open: toNumber(r[3]), submitted: toNumber(r[4]),
-      approved: toNumber(r[5]), draft: toNumber(r[6]), rejected: toNumber(r[7]),
+      kecamatan: String(r[2] ?? "").trim() || "-", open: toNumber(r[5]), submitted: toNumber(r[4]),
+      approved: toNumber(r[3]), draft: toNumber(r[6]), rejected: toNumber(r[7]),
       assignment: toNumber(r[8]), persentase: toPercentage(r[9]),
     };
     if (type === "sls") return {
