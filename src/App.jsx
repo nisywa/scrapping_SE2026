@@ -240,7 +240,7 @@ export default function App() {
       <header className="bg-gradient-to-r from-orange-600 to-orange-400 text-white px-6 py-5 shadow">
         <div className="max-w-[1500px] mx-auto flex flex-wrap items-center justify-between gap-4">
           <div><p className="text-xs font-semibold uppercase tracking-widest opacity-90">Badan Pusat Statistik</p>
-            <h1 className="text-2xl font-bold mt-1">Monitoring Petugas Pencacahan</h1><p className="text-sm opacity-90">BPS Kabupaten Pinrang</p></div>
+            <h1 className="text-2xl font-bold mt-1">PIONIR - Monitoring SE 2026</h1><p className="text-sm opacity-90">BPS Kabupaten Pinrang</p></div>
           <div className="text-right text-sm"><p className="opacity-80">Data diperbarui pada hari</p>
             <p className="font-semibold">{currentDateWita()}</p>
             <p className="font-semibold">Pukul 08.00 WITA</p>
