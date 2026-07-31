@@ -372,11 +372,11 @@ export default function App() {
           </section>}
 
           <div className="bg-white rounded-xl shadow overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="max-h-[75vh] overflow-auto">
               <table className="min-w-full text-sm">
-                <thead className="border-b border-orange-600 bg-gradient-to-r from-orange-600 to-amber-500"><tr>
+                <thead className="border-b border-orange-600"><tr>
                   {columns.map(([key, label, type]) => <th key={key} onClick={() => handleSort(key)}
-                    className={`${activeTab === "petugas" && key === "kecamatan" ? "w-[84px] min-w-[84px] max-w-[84px] px-2" : "min-w-[90px] max-w-[155px] px-3"} py-3 text-xs font-bold uppercase leading-tight tracking-wide cursor-pointer select-none whitespace-normal transition-colors hover:bg-white/15 ${type ? "text-right" : "text-left"} ${sort.key === key ? "bg-amber-200 text-orange-900" : "text-white"}`}>
+                    className={`sticky top-0 z-20 ${activeTab === "petugas" && key === "kecamatan" ? "w-[84px] min-w-[84px] max-w-[84px] px-2" : "min-w-[90px] max-w-[155px] px-3"} py-3 text-xs font-bold uppercase leading-tight tracking-wide cursor-pointer select-none whitespace-normal shadow-sm transition-colors hover:bg-orange-600 ${type ? "text-right" : "text-left"} ${sort.key === key ? "bg-amber-200 text-orange-900" : "bg-orange-500 text-white"}`}>
                     <span className={`flex items-center gap-1.5 ${type ? "justify-end" : "justify-start"}`}>
                       <span>{splitHeaderLabel(label).map((line, index) => <span key={`${key}-${index}`} className="block whitespace-nowrap">{line}</span>)}</span>
                       {sort.key === key && <span className="shrink-0">{sort.desc ? "▼" : "▲"}</span>}
