@@ -46,8 +46,8 @@ const TABLE_COLUMNS = {
     ["ppl", "PPL"], ["pml", "PML"], ["progres", "Progres SLS", "percent"],
   ],
   kecamatan: [
-    ["kecamatan", "Kecamatan"], ["open", "Open", "number"],
-    ["approve", "Approved by Pengawas", "number"], ["submit", "Submitted by Pencacah", "number"],
+    ["kecamatan", "Kecamatan"], ["open", "Approved by Pengawas", "number"],
+    ["approve", "Open", "number"], ["submit", "Submitted by Pencacah", "number"],
     ["draft", "Draft", "number"], ["reject", "Rejected by Pengawas", "number"],
     ["totalSubmit", "Total Submit", "number"],
     ["persentaseSubmit", "Persentase Submit Terhadap Total Assignment", "percent"],
@@ -208,6 +208,10 @@ export default function App() {
     const query = search.trim().toLowerCase();
     if (query) rows = rows.filter((row) => Object.values(row).some((value) => String(value).toLowerCase().includes(query)));
     if (sort.key) rows = [...rows].sort((a, b) => {
+      if (activeTab === "kecamatan") {
+        if (a.kecamatan === "TOTAL") return 1;
+        if (b.kecamatan === "TOTAL") return -1;
+      }
       const av = a[sort.key]; const bv = b[sort.key];
       const result = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv), "id");
       return sort.desc ? -result : result;
@@ -239,12 +243,6 @@ export default function App() {
     .filter((row) => row.jabatan.toUpperCase() === "PPL")
     .sort((a, b) => b.persentase - a.persentase)
     .slice(0, 5), [datasets.petugas]);
-
-  const topKecamatanRanks = useMemo(() => new Map(datasets.kecamatan
-    .filter((row) => row.kecamatan !== "TOTAL")
-    .sort((a, b) => b.persentaseSubmit - a.persentaseSubmit)
-    .slice(0, 5)
-    .map((row, index) => [row.kecamatan, index + 1])), [datasets.kecamatan]);
 
   function handleSort(key) {
     setSort((current) => current.key === key ? { key, desc: !current.desc } : { key, desc: true });
@@ -387,7 +385,7 @@ export default function App() {
                   {visibleRows.map((row, index) => <tr key={`${row.nama || row.regionCode || row.kecamatan}-${index}`}
                     className={`border-b last:border-b-0 border-slate-100 transition ${row.jabatan?.toUpperCase() === "PML" ? "bg-blue-50 font-semibold text-blue-950 shadow-[inset_4px_0_0_#3b82f6] hover:bg-blue-100" : row.kecamatan === "TOTAL" ? "bg-slate-50 font-semibold hover:bg-slate-100" : "hover:bg-orange-50"}`}>
                     {columns.map(([key, , type]) => <td key={key} className={`${(activeTab === "petugas" && key === "nama") || (activeTab === "sls" && key === "regionCode") ? `sticky left-0 z-10 shadow-[3px_0_6px_-2px_rgba(15,23,42,0.2)] ${row.jabatan?.toUpperCase() === "PML" ? "bg-blue-50" : "bg-white"}` : ""} ${activeTab === "petugas" && key === "kecamatan" ? "w-[84px] min-w-[84px] max-w-[84px] px-2" : "px-3"} py-2.5 whitespace-nowrap ${type ? "text-right" : "text-left"}`}>
-                      {activeTab === "kecamatan" && key === "kecamatan" && topKecamatanRanks.has(row.kecamatan) ? <span className="flex items-center gap-2"><span className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-bold text-white shadow-sm ${topKecamatanRanks.get(row.kecamatan) === 1 ? "bg-amber-500 ring-4 ring-amber-200" : topKecamatanRanks.get(row.kecamatan) === 2 ? "bg-slate-500" : topKecamatanRanks.get(row.kecamatan) === 3 ? "bg-orange-700" : "bg-orange-400"}`}>{topKecamatanRanks.get(row.kecamatan)}</span><span>{row[key]}</span></span>
+                      {activeTab === "kecamatan" && key === "kecamatan" && row.kecamatan !== "TOTAL" && index < 5 ? <span className="flex items-center gap-2"><span className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-bold text-white shadow-sm ${index === 0 ? "bg-amber-500 ring-4 ring-amber-200" : index === 1 ? "bg-slate-500" : index === 2 ? "bg-orange-700" : "bg-orange-400"}`}>{index + 1}</span><span>{row[key]}</span></span>
                         : activeTab === "petugas" && key === "jabatan" && row.jabatan.toUpperCase() === "PML" ? <span className="font-bold text-blue-700">PML</span>
                         : type === "percent" ? <span
                           title={activeTab === "petugas" && ["PPL", "PML"].includes(row.jabatan.toUpperCase()) ? row[key] >= 75 ? "Target minimal 75% tercapai" : "Peringatan: masih di bawah target 75%" : undefined}
