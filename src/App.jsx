@@ -43,8 +43,7 @@ const TABLE_COLUMNS = {
     ["completedAdmin", "Completed Admin", "number"], ["revokedPengawas", "Revoked Pengawas", "number"],
     ["submittedRespondent", "Submitted Responden", "number"], ["editedPengawas", "Edited Pengawas", "number"],
     ["rejectedAdmin", "Rejected Admin", "number"], ["revokedAdmin", "Revoked Admin", "number"],
-    ["ppl", "PPL"], ["pml", "PML"], ["totalSubmit", "Total Submit", "number"],
-    ["progres", "Progres SLS", "percent"], ["selesai", "SLS Selesai", "number"],
+    ["ppl", "PPL"], ["pml", "PML"], ["progres", "Progres SLS", "percent"],
   ],
   kecamatan: [
     ["kecamatan", "Kecamatan"], ["open", "Open", "number"],
@@ -123,7 +122,7 @@ function mapRows(type, rows) {
       editedAdmin: toNumber(r[7]), completedAdmin: toNumber(r[8]), revokedPengawas: toNumber(r[9]),
       submittedRespondent: toNumber(r[10]), editedPengawas: toNumber(r[11]), rejectedAdmin: toNumber(r[12]),
       revokedAdmin: toNumber(r[13]), ppl: String(r[14] ?? "").trim() || "-", pml: String(r[15] ?? "").trim() || "-",
-      totalSubmit: toNumber(r[16]), progres: toPercentage(r[17]), selesai: toNumber(r[18]),
+      progres: toPercentage(r[17]),
     };
     return {
       kecamatan: String(r[0] ?? "").trim() || "TOTAL", open: toNumber(r[1]), approve: toNumber(r[2]),
@@ -274,22 +273,22 @@ export default function App() {
           <div className="bg-blue-500 text-white rounded-xl p-4 shadow-md">
             <p className="text-xs font-medium opacity-90">Progress Pendataan</p>
             <p className="text-2xl font-bold mt-1">{summary.averageProgress.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</p>
-            <p className="text-xs mt-2 opacity-80">seluruh assignment PML</p>
+            <p className="text-xs mt-2 opacity-80">seluruh assignment saat ini</p>
           </div>
           <div className="bg-amber-500 text-white rounded-xl p-4 shadow-md">
             <p className="text-xs font-medium opacity-90">Total Draft</p>
             <p className="text-2xl font-bold mt-1">{summary.totalDraft.toLocaleString("id-ID")}</p>
-            <p className="text-xs mt-2 opacity-80">seluruh PML</p>
+            <p className="text-xs mt-2 opacity-80">seluruh assignment</p>
           </div>
           <div className="bg-emerald-500 text-white rounded-xl p-4 shadow-md">
             <p className="text-xs font-medium opacity-90">Total Approved Pengawas</p>
             <p className="text-2xl font-bold mt-1">{summary.totalApproved.toLocaleString("id-ID")}</p>
-            <p className="text-xs mt-2 opacity-80">seluruh PML</p>
+            <p className="text-xs mt-2 opacity-80">seluruh assignment</p>
           </div>
           <div className="bg-rose-500 text-white rounded-xl p-4 shadow-md">
             <p className="text-xs font-medium opacity-90">Total Rejected Pengawas</p>
             <p className="text-2xl font-bold mt-1">{summary.totalRejected.toLocaleString("id-ID")}</p>
-            <p className="text-xs mt-2 opacity-80">seluruh PML</p>
+            <p className="text-xs mt-2 opacity-80">seluruh assignment</p>
           </div>
         </section>}
 
@@ -376,7 +375,7 @@ export default function App() {
               <table className="min-w-full text-sm">
                 <thead className="border-b border-orange-600"><tr>
                   {columns.map(([key, label, type]) => <th key={key} onClick={() => handleSort(key)}
-                    className={`sticky top-0 ${activeTab === "petugas" && key === "nama" ? "left-0 z-30 shadow-[3px_0_6px_-2px_rgba(15,23,42,0.35)]" : "z-20"} ${activeTab === "petugas" && key === "kecamatan" ? "w-[84px] min-w-[84px] max-w-[84px] px-2" : "min-w-[90px] max-w-[155px] px-3"} py-3 text-xs font-bold uppercase leading-tight tracking-wide cursor-pointer select-none whitespace-normal shadow-sm transition-colors hover:bg-orange-600 ${type ? "text-right" : "text-left"} ${sort.key === key ? "bg-amber-200 text-orange-900" : "bg-orange-500 text-white"}`}>
+                    className={`sticky top-0 ${(activeTab === "petugas" && key === "nama") || (activeTab === "sls" && key === "regionCode") ? "left-0 z-30 shadow-[3px_0_6px_-2px_rgba(15,23,42,0.35)]" : "z-20"} ${activeTab === "petugas" && key === "kecamatan" ? "w-[84px] min-w-[84px] max-w-[84px] px-2" : "min-w-[90px] max-w-[155px] px-3"} py-3 text-xs font-bold uppercase leading-tight tracking-wide cursor-pointer select-none whitespace-normal shadow-sm transition-colors hover:bg-orange-600 ${type ? "text-right" : "text-left"} ${sort.key === key ? "bg-amber-200 text-orange-900" : "bg-orange-500 text-white"}`}>
                     <span className={`flex items-center gap-1.5 ${type ? "justify-end" : "justify-start"}`}>
                       <span>{splitHeaderLabel(label).map((line, index) => <span key={`${key}-${index}`} className="block whitespace-nowrap">{line}</span>)}</span>
                       {sort.key === key && <span className="shrink-0">{sort.desc ? "▼" : "▲"}</span>}
@@ -387,7 +386,7 @@ export default function App() {
                   {visibleRows.length === 0 && <tr><td colSpan={columns.length} className="text-center text-slate-400 py-10">Data tidak ditemukan.</td></tr>}
                   {visibleRows.map((row, index) => <tr key={`${row.nama || row.regionCode || row.kecamatan}-${index}`}
                     className={`border-b last:border-b-0 border-slate-100 transition ${row.jabatan?.toUpperCase() === "PML" ? "bg-blue-50 font-semibold text-blue-950 shadow-[inset_4px_0_0_#3b82f6] hover:bg-blue-100" : row.kecamatan === "TOTAL" ? "bg-slate-50 font-semibold hover:bg-slate-100" : "hover:bg-orange-50"}`}>
-                    {columns.map(([key, , type]) => <td key={key} className={`${activeTab === "petugas" && key === "nama" ? `sticky left-0 z-10 shadow-[3px_0_6px_-2px_rgba(15,23,42,0.2)] ${row.jabatan?.toUpperCase() === "PML" ? "bg-blue-50" : "bg-white"}` : ""} ${activeTab === "petugas" && key === "kecamatan" ? "w-[84px] min-w-[84px] max-w-[84px] px-2" : "px-3"} py-2.5 whitespace-nowrap ${type ? "text-right" : "text-left"}`}>
+                    {columns.map(([key, , type]) => <td key={key} className={`${(activeTab === "petugas" && key === "nama") || (activeTab === "sls" && key === "regionCode") ? `sticky left-0 z-10 shadow-[3px_0_6px_-2px_rgba(15,23,42,0.2)] ${row.jabatan?.toUpperCase() === "PML" ? "bg-blue-50" : "bg-white"}` : ""} ${activeTab === "petugas" && key === "kecamatan" ? "w-[84px] min-w-[84px] max-w-[84px] px-2" : "px-3"} py-2.5 whitespace-nowrap ${type ? "text-right" : "text-left"}`}>
                       {activeTab === "kecamatan" && key === "kecamatan" && topKecamatanRanks.has(row.kecamatan) ? <span className="flex items-center gap-2"><span className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-bold text-white shadow-sm ${topKecamatanRanks.get(row.kecamatan) === 1 ? "bg-amber-500 ring-4 ring-amber-200" : topKecamatanRanks.get(row.kecamatan) === 2 ? "bg-slate-500" : topKecamatanRanks.get(row.kecamatan) === 3 ? "bg-orange-700" : "bg-orange-400"}`}>{topKecamatanRanks.get(row.kecamatan)}</span><span>{row[key]}</span></span>
                         : activeTab === "petugas" && key === "jabatan" && row.jabatan.toUpperCase() === "PML" ? <span className="font-bold text-blue-700">PML</span>
                         : type === "percent" ? <span
