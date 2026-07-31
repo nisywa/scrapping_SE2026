@@ -14,7 +14,7 @@ const TABS = [
 const SOURCES = {
   petugas: {
     gid: "1335155335",
-    columns: ["A", "B", "C", "E", "G", "F", "H", "I", "R", "T"],
+    columns: ["A", "B", "C", "E", "G", "F", "H", "I", "R", "S", "T"],
   },
   sls: {
     gid: "253272285",
@@ -33,6 +33,7 @@ const TABLE_COLUMNS = {
     ["open", "Open", "number"], ["submitted", "Submitted by Pencacah", "number"],
     ["approved", "Approved by Pengawas", "number"], ["draft", "Draft", "number"],
     ["rejected", "Rejected by Pengawas", "number"], ["assignment", "Total Assignment", "number"],
+    ["sisaAssignment", "Sisa Assignment yang perlu di submit", "number"],
     ["persentase", "Persentase", "percent"],
   ],
   sls: [
@@ -79,6 +80,18 @@ function currentDateWita() {
 }
 
 function splitHeaderLabel(label) {
+  if (["Submitted by Pencacah", "Approved by Pengawas", "Rejected by Pengawas"].includes(label)) {
+    return label.split(" ");
+  }
+
+  if (label === "Total Assignment") {
+    return ["Total", "Assignment"];
+  }
+
+  if (label === "Sisa Assignment yang perlu di submit") {
+    return ["Sisa Assignment", "yang perlu di", "submit"];
+  }
+
   const words = label.split(" ");
   if (words.length < 3 || label.length <= 16) return [label];
 
@@ -102,7 +115,7 @@ function mapRows(type, rows) {
       nama: String(r[0] ?? "").trim(), jabatan: String(r[1] ?? "").trim() || "-",
       kecamatan: String(r[2] ?? "").trim() || "-", open: toNumber(r[5]), submitted: toNumber(r[4]),
       approved: toNumber(r[3]), draft: toNumber(r[6]), rejected: toNumber(r[7]),
-      assignment: toNumber(r[8]), persentase: toPercentage(r[9]),
+      assignment: toNumber(r[8]), sisaAssignment: toNumber(r[9]), persentase: toPercentage(r[10]),
     };
     if (type === "sls") return {
       regionCode: String(r[0] ?? "").trim(), totalRegion: toNumber(r[1]), open: toNumber(r[2]),
@@ -129,6 +142,12 @@ function progressClass(value) {
   if (value >= 40) return "bg-blue-100 text-blue-700";
   if (value > 0) return "bg-amber-100 text-amber-700";
   return "bg-slate-100 text-slate-500";
+}
+
+function assignmentProgressClass(value) {
+  return value >= 75
+    ? "bg-emerald-100 text-emerald-800 ring-1 ring-inset ring-emerald-300"
+    : "bg-red-100 text-red-700 ring-1 ring-inset ring-red-300";
 }
 
 export default function App() {
@@ -330,6 +349,7 @@ export default function App() {
                     <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-orange-800">Peringkat</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-orange-800">Nama Petugas</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-orange-800">Kecamatan</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-orange-800">Persentase saat ini</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -339,6 +359,12 @@ export default function App() {
                     </td>
                     <td className="px-4 py-3 font-bold text-slate-800">{row.nama}</td>
                     <td className="px-4 py-3 text-slate-600">{row.kecamatan}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${assignmentProgressClass(row.persentase)}`}>
+                        <span aria-hidden="true">{row.persentase >= 75 ? "✓" : "⚠"}</span>
+                        {row.persentase.toFixed(2)}%
+                      </span>
+                    </td>
                   </tr>)}
                 </tbody>
               </table>
@@ -350,7 +376,7 @@ export default function App() {
               <table className="min-w-full text-sm">
                 <thead className="border-b border-orange-600 bg-gradient-to-r from-orange-600 to-amber-500"><tr>
                   {columns.map(([key, label, type]) => <th key={key} onClick={() => handleSort(key)}
-                    className={`min-w-[90px] max-w-[155px] px-3 py-3 text-xs font-bold uppercase leading-tight tracking-wide cursor-pointer select-none whitespace-normal transition-colors hover:bg-white/15 ${type ? "text-right" : "text-left"} ${sort.key === key ? "bg-amber-200 text-orange-900" : "text-white"}`}>
+                    className={`${activeTab === "petugas" && key === "kecamatan" ? "w-[84px] min-w-[84px] max-w-[84px] px-2" : "min-w-[90px] max-w-[155px] px-3"} py-3 text-xs font-bold uppercase leading-tight tracking-wide cursor-pointer select-none whitespace-normal transition-colors hover:bg-white/15 ${type ? "text-right" : "text-left"} ${sort.key === key ? "bg-amber-200 text-orange-900" : "text-white"}`}>
                     <span className={`flex items-center gap-1.5 ${type ? "justify-end" : "justify-start"}`}>
                       <span>{splitHeaderLabel(label).map((line, index) => <span key={`${key}-${index}`} className="block whitespace-nowrap">{line}</span>)}</span>
                       {sort.key === key && <span className="shrink-0">{sort.desc ? "▼" : "▲"}</span>}
@@ -361,10 +387,15 @@ export default function App() {
                   {visibleRows.length === 0 && <tr><td colSpan={columns.length} className="text-center text-slate-400 py-10">Data tidak ditemukan.</td></tr>}
                   {visibleRows.map((row, index) => <tr key={`${row.nama || row.regionCode || row.kecamatan}-${index}`}
                     className={`border-b last:border-b-0 border-slate-100 transition ${row.jabatan?.toUpperCase() === "PML" ? "bg-blue-50 font-semibold text-blue-950 shadow-[inset_4px_0_0_#3b82f6] hover:bg-blue-100" : row.kecamatan === "TOTAL" ? "bg-slate-50 font-semibold hover:bg-slate-100" : "hover:bg-orange-50"}`}>
-                    {columns.map(([key, , type]) => <td key={key} className={`px-3 py-2.5 whitespace-nowrap ${type ? "text-right" : "text-left"}`}>
+                    {columns.map(([key, , type]) => <td key={key} className={`${activeTab === "petugas" && key === "kecamatan" ? "w-[84px] min-w-[84px] max-w-[84px] px-2" : "px-3"} py-2.5 whitespace-nowrap ${type ? "text-right" : "text-left"}`}>
                       {activeTab === "kecamatan" && key === "kecamatan" && topKecamatanRanks.has(row.kecamatan) ? <span className="flex items-center gap-2"><span className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-bold text-white shadow-sm ${topKecamatanRanks.get(row.kecamatan) === 1 ? "bg-amber-500 ring-4 ring-amber-200" : topKecamatanRanks.get(row.kecamatan) === 2 ? "bg-slate-500" : topKecamatanRanks.get(row.kecamatan) === 3 ? "bg-orange-700" : "bg-orange-400"}`}>{topKecamatanRanks.get(row.kecamatan)}</span><span>{row[key]}</span></span>
                         : activeTab === "petugas" && key === "jabatan" && row.jabatan.toUpperCase() === "PML" ? <span className="font-bold text-blue-700">PML</span>
-                        : type === "percent" ? <span className={`text-xs font-bold px-2 py-1 rounded-lg ${progressClass(row[key])}`}>{row[key].toFixed(2)}%</span>
+                        : type === "percent" ? <span
+                          title={activeTab === "petugas" && ["PPL", "PML"].includes(row.jabatan.toUpperCase()) ? row[key] >= 75 ? "Target minimal 75% tercapai" : "Peringatan: masih di bawah target 75%" : undefined}
+                          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${activeTab === "petugas" && ["PPL", "PML"].includes(row.jabatan.toUpperCase()) ? assignmentProgressClass(row[key]) : progressClass(row[key])}`}>
+                          {activeTab === "petugas" && ["PPL", "PML"].includes(row.jabatan.toUpperCase()) && <span aria-hidden="true">{row[key] >= 75 ? "✓" : "⚠"}</span>}
+                          {row[key].toFixed(2)}%
+                        </span>
                         : type === "number" ? row[key].toLocaleString("id-ID") : row[key]}
                     </td>)}
                   </tr>)}
