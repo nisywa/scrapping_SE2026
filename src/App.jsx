@@ -46,8 +46,8 @@ const TABLE_COLUMNS = {
     ["ppl", "PPL"], ["pml", "PML"], ["progres", "Progres SLS", "percent"],
   ],
   kecamatan: [
-    ["kecamatan", "Kecamatan"], ["open", "Approved by Pengawas", "number"],
-    ["approve", "Open", "number"], ["submit", "Submitted by Pencacah", "number"],
+    ["kecamatan", "Kecamatan"], ["approve", "Approved by Pengawas", "number"],
+    ["submit", "Submitted by Pencacah", "number"], ["open", "Open", "number"],
     ["draft", "Draft", "number"], ["reject", "Rejected by Pengawas", "number"],
     ["totalSubmit", "Total Submit", "number"],
     ["persentaseSubmit", "Persentase Submit Terhadap Total Assignment", "percent"],
@@ -125,8 +125,8 @@ function mapRows(type, rows) {
       progres: toPercentage(r[17]),
     };
     return {
-      kecamatan: String(r[0] ?? "").trim() || "TOTAL", open: toNumber(r[1]), approve: toNumber(r[2]),
-      submit: toNumber(r[3]), draft: toNumber(r[4]), reject: toNumber(r[5]),
+      kecamatan: String(r[0] ?? "").trim() || "TOTAL", approve: toNumber(r[1]), submit: toNumber(r[2]),
+      open: toNumber(r[3]), draft: toNumber(r[4]), reject: toNumber(r[5]),
       totalSubmit: toNumber(r[6]), persentaseSubmit: toPercentage(r[7]),
     };
   }).filter((r) => {
