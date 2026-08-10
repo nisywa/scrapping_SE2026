@@ -30,7 +30,7 @@ const SOURCES = {
 const TABLE_COLUMNS = {
   petugas: [
     ["nama", "Nama Petugas"], ["jabatan", "Jabatan"], ["kecamatan", "Kecamatan"],
-    ["open", "Open", "number"], ["submitted", "Submitted by Pencacah", "number"],
+    ["open", "Submitted by Pencacah", "number"], ["submitted", "Open", "number"],
     ["approved", "Approved by Pengawas", "number"], ["draft", "Draft", "number"],
     ["rejected", "Rejected by Pengawas", "number"], ["assignment", "Total Assignment", "number"],
     ["sisaAssignment", "Sisa Assignment yang perlu di submit", "number"],
