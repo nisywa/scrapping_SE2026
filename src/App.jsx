@@ -30,9 +30,9 @@ const SOURCES = {
 const TABLE_COLUMNS = {
   petugas: [
     ["nama", "Nama Petugas"], ["jabatan", "Jabatan"], ["kecamatan", "Kecamatan"],
-    ["open", "Submitted by Pencacah", "number"], ["submitted", "Open", "number"],
-    ["approved", "Approved by Pengawas", "number"], ["draft", "Draft", "number"],
-    ["rejected", "Rejected by Pengawas", "number"], ["assignment", "Total Assignment", "number"],
+    ["approved", "Approved by Pengawas", "number"], ["submitted", "Submitted by Pencacah", "number"],
+    ["draft", "Draft", "number"], ["rejected", "Rejected by Pengawas", "number"],
+    ["open", "Open", "number"], ["assignment", "Total Assignment", "number"],
     ["sisaAssignment", "Sisa Assignment yang perlu di submit", "number"],
     ["persentase", "Persentase", "percent"],
   ],
@@ -112,8 +112,8 @@ function mapRows(type, rows) {
   return rows.slice(1).map((r) => {
     if (type === "petugas") return {
       nama: String(r[0] ?? "").trim(), jabatan: String(r[1] ?? "").trim() || "-",
-      kecamatan: String(r[2] ?? "").trim() || "-", open: toNumber(r[5]), submitted: toNumber(r[4]),
-      approved: toNumber(r[3]), draft: toNumber(r[6]), rejected: toNumber(r[7]),
+      kecamatan: String(r[2] ?? "").trim() || "-", approved: toNumber(r[3]), draft: toNumber(r[4]),
+      submitted: toNumber(r[5]), rejected: toNumber(r[6]), open: toNumber(r[7]),
       assignment: toNumber(r[8]), sisaAssignment: toNumber(r[9]), persentase: toPercentage(r[10]),
     };
     if (type === "sls") return {
