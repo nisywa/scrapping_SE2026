@@ -2,9 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
 
 const SHEET_ID = "15HCv3ia-Xd4ztHvnapwjBevgWzmm7aVXHF-aDwj2cNg";
-const TOTAL_ASSIGNMENT_PROGRESS = 187198;
-const PROGRESS_ADJUSTMENT = 0;
-
 const TABS = [
   { id: "petugas", label: "Pendataan by Petugas" },
   { id: "sls", label: "Pendataan by SLS" },
@@ -227,6 +224,7 @@ export default function App() {
 
   const summary = useMemo(() => {
     const pmlRows = datasets.petugas.filter((row) => row.jabatan.toUpperCase() === "PML");
+    const kecamatanTotal = datasets.kecamatan.find((row) => row.kecamatan.toUpperCase() === "TOTAL");
     const totals = pmlRows.reduce((result, row) => ({
       open: result.open + row.open,
       approved: result.approved + row.approved,
@@ -236,14 +234,13 @@ export default function App() {
       open: 0, approved: 0, draft: 0, rejected: 0,
     });
 
-    const submittedAssignment = TOTAL_ASSIGNMENT_PROGRESS - totals.open - totals.draft;
     return {
-      averageProgress: (submittedAssignment / TOTAL_ASSIGNMENT_PROGRESS) * 100 + PROGRESS_ADJUSTMENT,
+      averageProgress: kecamatanTotal?.persentaseSubmit ?? 0,
       totalDraft: totals.draft,
       totalApproved: totals.approved,
       totalRejected: totals.rejected,
     };
-  }, [datasets.petugas]);
+  }, [datasets.petugas, datasets.kecamatan]);
 
   const topPplRows = useMemo(() => datasets.petugas
     .filter((row) => row.jabatan.toUpperCase() === "PPL")
