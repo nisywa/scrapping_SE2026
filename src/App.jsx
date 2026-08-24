@@ -143,10 +143,16 @@ function progressClass(value) {
   return "bg-slate-100 text-slate-500";
 }
 
-function assignmentProgressClass(value) {
-  return value >= 75
-    ? "bg-emerald-100 text-emerald-800 ring-1 ring-inset ring-emerald-300"
-    : "bg-red-100 text-red-700 ring-1 ring-inset ring-red-300";
+function completionProgressClass(value) {
+  if (value >= 100) return "bg-emerald-100 text-emerald-800 ring-1 ring-inset ring-emerald-300";
+  if (value >= 90) return "bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-300";
+  return "bg-red-100 text-red-700 ring-1 ring-inset ring-red-300";
+}
+
+function completionProgressTitle(value) {
+  if (value >= 100) return "Pendataan telah mencapai 100%";
+  if (value >= 90) return "Perhatian: pendataan berada di antara 90% dan 99,99%";
+  return "Peringatan: pendataan masih di bawah 90%";
 }
 
 export default function App() {
@@ -357,8 +363,8 @@ export default function App() {
                     <td className="px-4 py-3 font-bold text-slate-800">{row.nama}</td>
                     <td className="px-4 py-3 text-slate-600">{row.kecamatan}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${assignmentProgressClass(row.persentase)}`}>
-                        <span aria-hidden="true">{row.persentase >= 75 ? "✓" : "⚠"}</span>
+                      <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${completionProgressClass(row.persentase)}`}>
+                        <span aria-hidden="true">{row.persentase >= 100 ? "✓" : "⚠"}</span>
                         {row.persentase.toFixed(2)}%
                       </span>
                     </td>
@@ -388,9 +394,9 @@ export default function App() {
                       {activeTab === "kecamatan" && key === "kecamatan" && row.kecamatan !== "TOTAL" && index < 5 ? <span className="flex items-center gap-2"><span className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-bold text-white shadow-sm ${index === 0 ? "bg-amber-500 ring-4 ring-amber-200" : index === 1 ? "bg-slate-500" : index === 2 ? "bg-orange-700" : "bg-orange-400"}`}>{index + 1}</span><span>{row[key]}</span></span>
                         : activeTab === "petugas" && key === "jabatan" && row.jabatan.toUpperCase() === "PML" ? <span className="font-bold text-blue-700">PML</span>
                         : type === "percent" ? <span
-                          title={activeTab === "petugas" && ["PPL", "PML"].includes(row.jabatan.toUpperCase()) ? row[key] >= 75 ? "Target minimal 75% tercapai" : "Peringatan: masih di bawah target 75%" : undefined}
-                          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${activeTab === "petugas" && ["PPL", "PML"].includes(row.jabatan.toUpperCase()) ? assignmentProgressClass(row[key]) : progressClass(row[key])}`}>
-                          {activeTab === "petugas" && ["PPL", "PML"].includes(row.jabatan.toUpperCase()) && <span aria-hidden="true">{row[key] >= 75 ? "✓" : "⚠"}</span>}
+                          title={["petugas", "kecamatan"].includes(activeTab) ? completionProgressTitle(row[key]) : undefined}
+                          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${["petugas", "kecamatan"].includes(activeTab) ? completionProgressClass(row[key]) : progressClass(row[key])}`}>
+                          {["petugas", "kecamatan"].includes(activeTab) && <span aria-hidden="true">{row[key] >= 100 ? "✓" : "⚠"}</span>}
                           {row[key].toFixed(2)}%
                         </span>
                         : type === "number" ? row[key].toLocaleString("id-ID") : row[key]}
